@@ -12,7 +12,15 @@ import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.glance.currentState
+import androidx.glance.layout.width
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
@@ -57,20 +65,41 @@ class CalendarWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repo = MatchRepository.get(context)
-        val today = LocalDate.now()
-        val month = YearMonth.from(today)
         val matches = repo.cachedMatches()
-        val byDay = matches.filter { YearMonth.from(Format.localDate(it.kickoff)) == month }
-            .groupBy { Format.localDate(it.kickoff).dayOfMonth }
-            .mapValues { it.value.first() }
-        val crests = byDay.values.map { it.opponent }.distinctBy { it.id }
+        // All crests up front (small, cached on disk) so month paging needs no reload.
+        val crests = matches.map { it.opponent }.distinctBy { it.id }
             .associate { it.id to repo.cachedCrest(it) }
         val next = matches.firstOrNull {
             it.state != MatchState.FINISHED && it.kickoff.isAfter(Instant.now() - Duration.ofHours(2))
         }
-        provideContent { WidgetContent(context, month, today, byDay, crests, next) }
+        provideContent {
+            val offset = currentState(MonthOffsetKey) ?: 0
+            val today = LocalDate.now()
+            val month = YearMonth.from(today).plusMonths(offset.toLong())
+            val byDay = matches.filter { YearMonth.from(Format.localDate(it.kickoff)) == month }
+                .groupBy { Format.localDate(it.kickoff).dayOfMonth }
+                .mapValues { it.value.first() }
+            WidgetContent(context, month, today, byDay, crests, next)
+        }
     }
 }
+
+/** Months away from the current one; stored per widget instance. */
+internal val MonthOffsetKey = intPreferencesKey("month_offset")
+private val DeltaKey = ActionParameters.Key<Int>("delta")
+
+/** ‹ / › page by one month; delta 0 jumps back to the current month. */
+class ChangeMonthAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val delta = parameters[DeltaKey] ?: 0
+        updateAppWidgetState(context, glanceId) { prefs ->
+            prefs[MonthOffsetKey] = if (delta == 0) 0 else (prefs[MonthOffsetKey] ?: 0) + delta
+        }
+        CalendarWidget().update(context, glanceId)
+    }
+}
+
+private fun changeMonth(delta: Int) = actionRunCallback<ChangeMonthAction>(actionParametersOf(DeltaKey to delta))
 
 private object W {
     val bg = ColorProvider(day = Color(0xFFFFFFFF), night = Color(0xFF141A2E))
@@ -98,8 +127,8 @@ private fun WidgetContent(
     val blanks = Format.leadingBlanks(month)
     val weeks = (blanks + month.lengthOfMonth() + 6) / 7
     val size = LocalSize.current
-    // 30dp header + 26dp weekday row + 10dp bottom padding.
-    val rowHeight = (size.height - 66.dp) / weeks
+    // 34dp header + 26dp weekday row + 10dp bottom padding.
+    val rowHeight = (size.height - 70.dp) / weeks
     val cellWidth = size.width / 7
     // Leave room for the day number and label; about two-thirds of a cell's width.
     val crestSize = minOf(rowHeight - 28.dp, cellWidth * 0.65f).coerceIn(12.dp, 24.dp)
@@ -109,18 +138,22 @@ private fun WidgetContent(
             .clickable(actionStartActivity(Intent(context, MainActivity::class.java))),
     ) {
         Row(
-            GlanceModifier.fillMaxWidth().height(30.dp).background(W.header).padding(horizontal = 10.dp),
+            GlanceModifier.fillMaxWidth().height(34.dp).background(W.header).padding(end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            NavArrow("‹", changeMonth(-1))
             Text(
-                "${month.monthValue}월",
+                if (month.year == today.year) "${month.monthValue}월" else "${month.year}년 ${month.monthValue}월",
+                modifier = GlanceModifier.clickable(changeMonth(0)),
                 style = TextStyle(color = W.onHeader, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                maxLines = 1,
             )
-            Spacer(GlanceModifier.defaultWeight())
+            NavArrow("›", changeMonth(1))
             Text(
                 next?.let { "다음 ${Format.shortDate(it.kickoff)} ${Format.time(it.kickoff)} ${if (it.spursIsHome) "vs" else "@"} ${it.opponent.abbreviation}" }
                     ?: "",
-                style = TextStyle(color = W.onHeader, fontSize = 11.sp),
+                modifier = GlanceModifier.defaultWeight(),
+                style = TextStyle(color = W.onHeader, fontSize = 11.sp, textAlign = TextAlign.End),
                 maxLines = 1,
             )
         }
@@ -159,6 +192,17 @@ private fun WidgetContent(
                 }
             }
         }
+    }
+}
+
+/** Full-height, 34dp-wide tap target so the arrows are easy to hit. */
+@Composable
+private fun NavArrow(glyph: String, action: androidx.glance.action.Action) {
+    Box(
+        GlanceModifier.width(34.dp).fillMaxHeight().clickable(action),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, style = TextStyle(color = W.onHeader, fontSize = 22.sp, fontWeight = FontWeight.Bold))
     }
 }
 
