@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -181,14 +183,15 @@ private fun MonthCalendar(
             }
             Spacer(Modifier.height(4.dp))
             for (w in 0 until weeks) {
-                Row {
+                // Height follows content (narrow screens / display zoom), equal across the week.
+                Row(Modifier.height(IntrinsicSize.Min)) {
                     for (d in 0 until 7) {
                         val day = w * 7 + d - blanks + 1
                         val valid = day in 1..month.lengthOfMonth()
                         val match = if (valid) byDay[day] else null
                         val isToday = valid && month.atDay(day) == today
                         Column(
-                            Modifier.weight(1f).aspectRatio(0.78f).padding(2.dp)
+                            Modifier.weight(1f).fillMaxHeight().heightIn(min = 56.dp).padding(2.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(
                                     when {
@@ -210,6 +213,7 @@ private fun MonthCalendar(
                             if (match != null) {
                                 Crest(match.opponent, 24.dp)
                                 CellLabel(match)
+                                Spacer(Modifier.height(2.dp))
                             }
                         }
                     }

@@ -25,7 +25,8 @@ object FormationLayout {
         val outfield = starters.filter { it !== keeper }
             .sortedWith(compareBy({ depth(it.position) }, { it.formationPlace }))
 
-        val slots = mutableListOf(Slot(keeper, 0.5f, 0.06f))
+        // Keeper sits high enough that the name label clears the goal line.
+        val slots = mutableListOf(Slot(keeper, 0.5f, 0.09f))
         var index = 0
         rows.forEachIndexed { rowIndex, size ->
             val row = outfield.subList(index, index + size)
