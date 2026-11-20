@@ -98,9 +98,11 @@ private fun WidgetContent(
     val blanks = Format.leadingBlanks(month)
     val weeks = (blanks + month.lengthOfMonth() + 6) / 7
     val size = LocalSize.current
-    // 30dp header + 26dp weekday row + 3dp bottom padding.
-    val rowHeight = (size.height - 59.dp) / weeks
-    val crestSize = (rowHeight - 26.dp).coerceIn(12.dp, 30.dp)
+    // 30dp header + 26dp weekday row + 10dp bottom padding.
+    val rowHeight = (size.height - 66.dp) / weeks
+    val cellWidth = size.width / 7
+    // Leave room for the day number and label; about two-thirds of a cell's width.
+    val crestSize = minOf(rowHeight - 28.dp, cellWidth * 0.65f).coerceIn(12.dp, 24.dp)
 
     Column(
         GlanceModifier.fillMaxSize().background(W.bg).cornerRadius(16.dp)
@@ -137,7 +139,7 @@ private fun WidgetContent(
                 )
             }
         }
-        Column(GlanceModifier.fillMaxWidth().defaultWeight().padding(start = 2.dp, end = 2.dp, bottom = 3.dp)) {
+        Column(GlanceModifier.fillMaxWidth().defaultWeight().padding(start = 2.dp, end = 2.dp, bottom = 10.dp)) {
             for (w in 0 until weeks) {
                 Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
                     for (d in 0 until 7) {
